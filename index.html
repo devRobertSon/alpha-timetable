@@ -45,6 +45,7 @@
     .message { padding:30mm 10mm; text-align:center; color:var(--muted); font-size:13px; }
     .drop-prompt { margin:18mm auto; width:82%; min-height:70mm; display:grid; place-items:center; padding:12mm; border:2px dashed #8da2e8; border-radius:14px; background:#f7f9ff; color:#3157d5; text-align:center; font-size:16px; font-weight:800; line-height:1.7; }
     .drop-prompt small { display:block; color:#667085; font-size:12px; font-weight:500; }
+    .file-warning { display:block; margin-top:3mm; color:#d92d20; font-size:13px; font-weight:800; }
     @page weekdayPage { size:A4 landscape; margin:14mm; }
     @page weekendPage { size:A4 portrait; margin:14mm; }
     @media print {
@@ -209,7 +210,7 @@
     }
 
     function showFilePrompt() {
-      pages.innerHTML = '<section class="paper weekday"><div class="print-head"><h1>주간 시간표</h1></div><div class="fit"><div class="drop-prompt"><div>EduOK XLS 파일을 이곳에 드래그 앤 드롭하세요<small>또는 위의 ‘새 XLS 선택’ 버튼을 눌러 주세요.<br>파일은 서버로 전송되지 않고 이 브라우저에서만 처리됩니다.</small></div></div></div></section>';
+      pages.innerHTML = '<section class="paper weekday"><div class="print-head"><h1>주간 시간표</h1></div><div class="fit"><div class="drop-prompt"><div>EduOK XLS 파일을 이곳에 드래그 앤 드롭하세요<small>또는 위의 ‘새 XLS 선택’ 버튼을 눌러 주세요.<br>파일은 서버로 전송되지 않고 이 브라우저에서만 처리됩니다.</small><span class="file-warning">요일별 날짜 계산을 위해 EduOK에서 받은 파일 이름을 수정하지 마세요.</span></div></div></div></section>';
       status.textContent='EduOK XLS 파일을 선택해 주세요';
     }
 
