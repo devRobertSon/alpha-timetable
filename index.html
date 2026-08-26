@@ -43,6 +43,8 @@
     .weekend-table { font-size:7.5pt; }
     .empty { color:#98a2b3; text-align:center; }
     .message { padding:30mm 10mm; text-align:center; color:var(--muted); font-size:13px; }
+    .drop-prompt { margin:18mm auto; width:82%; min-height:70mm; display:grid; place-items:center; padding:12mm; border:2px dashed #8da2e8; border-radius:14px; background:#f7f9ff; color:#3157d5; text-align:center; font-size:16px; font-weight:800; line-height:1.7; }
+    .drop-prompt small { display:block; color:#667085; font-size:12px; font-weight:500; }
     @page weekdayPage { size:A4 landscape; margin:14mm; }
     @page weekendPage { size:A4 portrait; margin:14mm; }
     @media print {
@@ -71,6 +73,7 @@
     <input id="file" type="file" accept=".xls,.html,.htm,text/html">
     <button id="fitButton" type="button">페이지 맞춤</button>
     <button class="primary" id="pdfButton" type="button">PDF 새 탭에서 보기</button>
+    <button id="printButton" type="button">인쇄</button>
   </header>
   <main>
     <div id="pages"><section class="paper weekday"><div class="print-head"><h1>주간 시간표</h1></div><div class="fit"><div class="message">시간표를 불러오는 중입니다.</div></div></section></div>
@@ -183,7 +186,7 @@
     }
 
     function showFilePrompt() {
-      pages.innerHTML = '<section class="paper weekday"><div class="print-head"><h1>주간 시간표</h1></div><div class="fit"><div class="message">위의 ‘새 XLS 선택’ 버튼을 눌러<br>EduOK 주간 시간표 파일을 불러와 주세요.<br><br>파일은 서버로 전송되지 않고 이 브라우저에서만 처리됩니다.</div></div></section>';
+      pages.innerHTML = '<section class="paper weekday"><div class="print-head"><h1>주간 시간표</h1></div><div class="fit"><div class="drop-prompt"><div>EduOK XLS 파일을 이곳에 드래그 앤 드롭하세요<small>또는 위의 ‘새 XLS 선택’ 버튼을 눌러 주세요.<br>파일은 서버로 전송되지 않고 이 브라우저에서만 처리됩니다.</small></div></div></div></section>';
       status.textContent='EduOK XLS 파일을 선택해 주세요';
     }
 
@@ -260,21 +263,38 @@
       return new Blob(parts,{type:'application/pdf'});
     }
 
+    async function createPdfBlob() {
+      scaleToPages();
+      const pageElements=[...document.querySelectorAll('.paper')];
+      if(pageElements.length!==3) throw new Error('먼저 EduOK XLS 파일을 선택해 주세요.');
+      const images=[]; for(const element of pageElements) images.push(await elementToJpeg(element));
+      return buildPdf(images);
+    }
+
     async function openPdfInNewTab() {
       const pdfTab=window.open('','_blank');
       if(!pdfTab) { alert('새 탭이 차단되었습니다. 이 사이트의 팝업을 허용한 뒤 다시 눌러 주세요.'); return; }
       pdfTab.document.write('<!doctype html><meta charset="utf-8"><title>PDF 생성 중</title><style>body{font-family:sans-serif;padding:40px;text-align:center;color:#344054}</style><p>시간표 PDF를 생성하고 있습니다…</p>');
       try {
-        scaleToPages();
-        const pageElements=[...document.querySelectorAll('.paper')];
-        if(pageElements.length!==3) throw new Error('먼저 EduOK XLS 파일을 선택해 주세요.');
-        const images=[]; for(const element of pageElements) images.push(await elementToJpeg(element));
-        const url=URL.createObjectURL(buildPdf(images));
+        const url=URL.createObjectURL(await createPdfBlob());
         pdfTab.location.replace(url);
         setTimeout(()=>URL.revokeObjectURL(url),120000);
       } catch(error) {
         pdfTab.document.body.innerHTML=`<p>PDF 생성에 실패했습니다.</p><p>${esc(error.message)}</p>`;
       }
+    }
+
+    async function printPdf() {
+      const button=document.querySelector('#printButton'), original=button.textContent;
+      button.disabled=true; button.textContent='PDF 생성 중…';
+      try {
+        const url=URL.createObjectURL(await createPdfBlob());
+        const frame=document.createElement('iframe');
+        frame.style.cssText='position:fixed;width:1px;height:1px;right:0;bottom:0;border:0;opacity:0';
+        frame.onload=()=>{ try { frame.contentWindow.focus(); frame.contentWindow.print(); } finally { setTimeout(()=>{frame.remove();URL.revokeObjectURL(url);},120000); } };
+        frame.src=url; document.body.appendChild(frame);
+      } catch(error) { alert(`인쇄용 PDF 생성에 실패했습니다.\n${error.message}`); }
+      finally { button.disabled=false; button.textContent=original; }
     }
 
     async function loadScheduleFile(file) {
@@ -292,6 +312,7 @@
     window.addEventListener('drop', event=>{ event.preventDefault(); dragDepth=0; document.body.classList.remove('dragging'); loadScheduleFile(event.dataTransfer?.files?.[0]); });
     document.querySelector('#fitButton').addEventListener('click', scaleToPages);
     document.querySelector('#pdfButton').addEventListener('click', openPdfInNewTab);
+    document.querySelector('#printButton').addEventListener('click', printPdf);
     window.addEventListener('resize', scaleToPages);
     showFilePrompt();
   </script>
