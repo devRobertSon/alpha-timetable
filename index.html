@@ -13,6 +13,7 @@
     .status { color:var(--muted); font-size:13px; }
     button,.file-label { appearance:none; border:0; border-radius:8px; padding:9px 13px; background:#e8ecf5; color:var(--ink); font:700 13px inherit; cursor:pointer; }
     button.primary { color:white; background:var(--accent); }
+    body.dragging::after { content:'EduOK XLS 파일을 여기에 놓으세요'; position:fixed; inset:18px; z-index:100; display:grid; place-items:center; border:4px dashed var(--accent); border-radius:18px; background:rgba(238,244,255,.94); color:var(--accent); font-size:24px; font-weight:800; pointer-events:none; }
     #file { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
     main { padding:20px; }
     #pages { display:grid; gap:20px; }
@@ -275,11 +276,19 @@
       }
     }
 
-    document.querySelector('#file').addEventListener('change', async event => {
-      const file=event.target.files[0]; if(!file) return;
+    async function loadScheduleFile(file) {
+      if(!file) return;
+      if(!/\.(xls|html?|htm)$/i.test(file.name)) { alert('EduOK에서 내려받은 .xls 파일을 선택해 주세요.'); return; }
       try { render(parseSchedule(decode(await file.arrayBuffer())), file.name); }
       catch(error) { alert(error.message); }
-    });
+    }
+
+    document.querySelector('#file').addEventListener('change', event => loadScheduleFile(event.target.files[0]));
+    let dragDepth=0;
+    window.addEventListener('dragenter', event=>{ event.preventDefault(); dragDepth++; document.body.classList.add('dragging'); });
+    window.addEventListener('dragover', event=>{ event.preventDefault(); if(event.dataTransfer) event.dataTransfer.dropEffect='copy'; });
+    window.addEventListener('dragleave', event=>{ event.preventDefault(); dragDepth=Math.max(0,dragDepth-1); if(!dragDepth) document.body.classList.remove('dragging'); });
+    window.addEventListener('drop', event=>{ event.preventDefault(); dragDepth=0; document.body.classList.remove('dragging'); loadScheduleFile(event.dataTransfer?.files?.[0]); });
     document.querySelector('#fitButton').addEventListener('click', scaleToPages);
     document.querySelector('#pdfButton').addEventListener('click', openPdfInNewTab);
     window.addEventListener('resize', scaleToPages);
