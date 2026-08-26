@@ -84,7 +84,7 @@
     <span class="status" id="status">시간표를 불러오는 중…</span>
     <div class="view-controls" id="viewControls" hidden>
       <button class="active" id="weeklyViewButton" type="button">주간 시간표</button>
-      <button id="dailyViewButton" type="button">강사별 하루 시간표</button>
+      <button id="dailyViewButton" type="button">강사별 주간 시간표</button>
     </div>
     <label class="file-label" for="file">새 XLS 선택</label>
     <input id="file" type="file" accept=".xls,.html,.htm,text/html">
@@ -240,19 +240,19 @@
       const dayRows=rows.map(row=>({time:row.time,groups:row.days[dayIndex]})).filter(row=>row.groups.length);
       const teachers=[...new Set(dayRows.flatMap(row=>row.groups.map(group=>group.teacher)))].sort((a,b)=>a.localeCompare(b,'ko'));
       const body=dayRows.map(row=>`<tr><td class="time">${esc(row.time)}</td>${teachers.map(teacher=>{const groups=row.groups.filter(group=>group.teacher===teacher); return `<td>${groups.map(group=>`<div class="class-card"><div><span class="class-name">${esc(group.name)}</span> <span class="teacher-bracket">[${esc(teacher)}]</span></div><div class="students">${group.students.map(name=>`<span class="student">${esc(name)}</span>`).join('')}</div></div>`).join('')}</td>`;}).join('')}</tr>`).join('');
-      return `<table class="teacher-table" aria-label="강사별 하루 시간표"><thead><tr><th>시간</th>${teachers.map(teacher=>`<th>${esc(teacher)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
+      return `<table class="teacher-table" aria-label="강사별 주간 시간표 중 선택한 날짜"><thead><tr><th>시간</th>${teachers.map(teacher=>`<th>${esc(teacher)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
     }
 
     function renderDaily(rows,label='') {
       const missing=missingTeacherClasses(rows), dateLabel=dayDateLabel(selectedDayIndex,datesFromFileName(label));
       if(missing.length) {
         outputBlocked=true;
-        pages.innerHTML=`<section class="paper weekday"><div class="print-head"><h1>강사별 하루 시간표</h1><div class="date">${esc(dateLabel)}</div></div><div class="blocking-error"><h2>강사명이 없는 수업이 있어 시간표를 출력할 수 없습니다.</h2><p>EduOK에서 아래 수업에 강사를 지정한 뒤 파일을 다시 내려받아 주세요.</p><ul>${missing.map(name=>`<li>${esc(name)}</li>`).join('')}</ul></div></section>`;
+        pages.innerHTML=`<section class="paper weekday"><div class="print-head"><h1>강사별 주간 시간표</h1><div class="date">${esc(dateLabel)}</div></div><div class="blocking-error"><h2>강사명이 없는 수업이 있어 시간표를 출력할 수 없습니다.</h2><p>EduOK에서 아래 수업에 강사를 지정한 뒤 파일을 다시 내려받아 주세요.</p><ul>${missing.map(name=>`<li>${esc(name)}</li>`).join('')}</ul></div></section>`;
         status.textContent=`강사명 누락 ${missing.length}개 · PDF 및 인쇄 불가`;
       } else {
         outputBlocked=false;
-        pages.innerHTML=`<section class="paper weekday"><div class="print-head"><h1>강사별 하루 시간표</h1><div class="date">${esc(dateLabel)}</div></div><div class="fit">${teacherDayTableHtml(rows,selectedDayIndex)}</div></section>`;
-        status.textContent=`${dateLabel} · 강사별 하루 시간표`;
+        pages.innerHTML=`<section class="paper weekday"><div class="print-head"><h1>강사별 주간 시간표</h1><div class="date">${esc(dateLabel)}</div></div><div class="fit">${teacherDayTableHtml(rows,selectedDayIndex)}</div></section>`;
+        status.textContent=`강사별 주간 시간표 · ${dateLabel} · 1일 1페이지`;
         requestAnimationFrame(scaleToPages);
       }
     }
