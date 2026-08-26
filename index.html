@@ -24,7 +24,7 @@
     table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:7.2pt; line-height:1.2; }
     th,td { border:.25mm solid var(--line); vertical-align:top; padding:.7mm; }
     th { background:#eff2f7; text-align:center; font-size:7pt; font-weight:800; }
-    th:first-child,td.time { width:12mm; }
+    th:first-child,td.time { width:14mm; }
     th.sun { color:#d92d20; background:#fff1f0; } th.sat { color:#175cd3; background:#eef4ff; }
     td.time { background:#f7f8fa; text-align:center; vertical-align:middle; white-space:nowrap; font-weight:800; }
     .class-card + .class-card { border-top:.25mm dashed #bbc3d0; margin-top:.7mm; padding-top:.7mm; }
@@ -32,6 +32,9 @@
     .teacher { color:#667085; font-size:.9em; margin-left:.4em; white-space:nowrap; }
     .students { display:flex; flex-wrap:wrap; gap:.1mm 1.2mm; margin-top:.35mm; color:#101828; }
     .student { white-space:nowrap; }
+    .slot-source { display:block; margin-bottom:.5mm; color:#667085; font-size:.85em; font-weight:800; }
+    .weekend-table th:first-child,.weekend-table td.time { width:22mm; }
+    .weekend-table { font-size:8.2pt; }
     .empty { color:#98a2b3; text-align:center; }
     .message { padding:30mm 10mm; text-align:center; color:var(--muted); font-size:13px; }
     @page { size:A4 landscape; margin:10mm; }
@@ -56,8 +59,8 @@
     <span class="status" id="status">시간표를 불러오는 중…</span>
     <label class="file-label" for="file">새 XLS 선택</label>
     <input id="file" type="file" accept=".xls,.html,.htm,text/html">
-    <button id="fitButton" type="button">두 페이지 맞춤</button>
-    <button class="primary" id="printButton" type="button">A4 가로 2장 인쇄</button>
+    <button id="fitButton" type="button">페이지 맞춤</button>
+    <button class="primary" id="printButton" type="button">A4 가로 4장 인쇄</button>
   </header>
   <main>
     <div id="pages"><section class="paper"><div class="print-head"><h1>주간 시간표</h1></div><div class="fit"><div class="message">시간표를 불러오는 중입니다.</div></div></section></div>
@@ -114,22 +117,44 @@
       return `<table aria-label="주간 시간표"><thead><tr>${DAYS.map((day,i)=>`<th class="${i===1?'sun':i===7?'sat':''}">${day}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
     }
 
-    function rowWeight(row) {
-      const groups=row.days.flat();
-      return 1 + groups.length*2 + groups.reduce((sum,group)=>sum+group.students.length*.35,0);
+    function toMinutes(time) {
+      const [hourText,minuteText='0']=time.split(':');
+      let hour=Number(hourText), minute=Number(minuteText);
+      if(hour>=2 && hour<=8) hour+=12;
+      return hour*60+minute;
     }
 
-    function splitRows(rows) {
-      const weights=rows.map(rowWeight), total=weights.reduce((a,b)=>a+b,0);
-      let sum=0, best=Math.ceil(rows.length/2), gap=Infinity;
-      for(let i=0;i<rows.length-1;i++) { sum+=weights[i]; const nextGap=Math.abs(total*.44-sum); if(i>=5 && i<=rows.length-7 && nextGap<gap){ gap=nextGap; best=i+1; } }
-      return [rows.slice(0,best),rows.slice(best)];
+    function weekdayRows(rows) {
+      return Array.from({length:7},(_,index)=>{
+        const hour=14+index, start=hour*60, end=start+60;
+        const matching=rows.filter(row=>{const minute=toMinutes(row.time); return minute>=start && minute<end;});
+        return {
+          time:`${String(hour).padStart(2,'0')}:00`,
+          days:Array.from({length:5},(_,day)=>matching.flatMap(row=>row.days[day+1].map(group=>({...group,sourceTime:row.time}))))
+        };
+      });
+    }
+
+    function weekdayTableHtml(rows) {
+      const body=rows.map(row=>`<tr><td class="time">${esc(row.time)}</td>${row.days.map(groups=>`<td>${groups.map(group=>`<div class="class-card"><div><span class="slot-source">${esc(group.sourceTime)}</span><span class="class-name">${esc(group.name)}</span>${group.teacher?`<span class="teacher">(${esc(group.teacher)})</span>`:''}</div>${group.students.length?`<div class="students">${group.students.map(name=>`<span class="student">${esc(name)}</span>`).join('')}</div>`:''}</div>`).join('')}</td>`).join('')}</tr>`).join('');
+      return `<table aria-label="평일 시간표"><thead><tr>${['시간','월','화','수','목','금'].map(day=>`<th>${day}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
+    }
+
+    function weekendTableHtml(rows,dayIndex,dayName) {
+      const filtered=rows.map(row=>({time:row.time,groups:row.days[dayIndex]})).filter(row=>row.groups.length);
+      const body=filtered.map(row=>`<tr><td class="time">${esc(row.time)}</td><td>${row.groups.map(group=>`<div class="class-card"><div><span class="class-name">${esc(group.name)}</span>${group.teacher?`<span class="teacher">(${esc(group.teacher)})</span>`:''}</div>${group.students.length?`<div class="students">${group.students.map(name=>`<span class="student">${esc(name)}</span>`).join('')}</div>`:''}</div>`).join('')}</td></tr>`).join('');
+      return `<table class="weekend-table" aria-label="${dayName} 시간표"><thead><tr><th>시간</th><th>${dayName}</th></tr></thead><tbody>${body}</tbody></table>`;
     }
 
     function render(rows, label='') {
-      const halves=splitRows(rows);
-      pages.innerHTML=halves.map((part,index)=>`<section class="paper"><div class="print-head"><h1>주간 시간표 <small>${index+1}/2</small></h1><div class="date">${esc(label)}</div></div><div class="fit">${tableHtml(part)}</div></section>`).join('');
-      status.textContent = `${rows.length}개 시간대 · A4 가로 2페이지`;
+      const sections=[
+        {title:'평일 시간표 · 월–금 · 14–16시',html:weekdayTableHtml(weekdayRows(rows).slice(0,3))},
+        {title:'평일 시간표 · 월–금 · 17–20시',html:weekdayTableHtml(weekdayRows(rows).slice(3))},
+        {title:'토요일 시간표',html:weekendTableHtml(rows,6,'토요일')},
+        {title:'일요일 시간표',html:weekendTableHtml(rows,0,'일요일')}
+      ];
+      pages.innerHTML=sections.map((section,index)=>`<section class="paper"><div class="print-head"><h1>${section.title} <small>${index+1}/4</small></h1><div class="date">${esc(label)}</div></div><div class="fit">${section.html}</div></section>`).join('');
+      status.textContent = `평일 2장·토요일·일요일 · A4 가로 4페이지`;
       requestAnimationFrame(scaleToPages);
     }
 
@@ -138,10 +163,10 @@
       document.querySelectorAll('.paper').forEach(paper=>{
         const fit=paper.querySelector('.fit'); fit.style.transform='none'; fit.style.width='100%';
         const maxHeight=paper.clientHeight-paper.querySelector('.print-head').offsetHeight-12;
-        const scale=Math.min(1,maxHeight/fit.scrollHeight); scales.push(scale);
+        const scale=Math.min(1,maxHeight/fit.scrollHeight*.96); scales.push(scale);
         fit.style.transform=`scale(${scale})`; fit.style.width=`${100/scale}%`;
       });
-      if(scales.length===2) status.textContent=`${status.textContent.split(' · 맞춤')[0]} · 맞춤 ${scales.map(v=>Math.round(v*100)+'%').join(' / ')}`;
+      if(scales.length>1) status.textContent=`${status.textContent.split(' · 맞춤')[0]} · 맞춤 ${scales.map(v=>Math.round(v*100)+'%').join(' / ')}`;
     }
 
     function showFilePrompt() {
@@ -161,3 +186,4 @@
   </script>
 </body>
 </html>
+
