@@ -15,12 +15,13 @@
     button.primary { color:white; background:var(--accent); }
     #file { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
     main { padding:20px; }
+    #pages { display:grid; gap:20px; }
     .paper { width:277mm; height:190mm; margin:auto; padding:5mm; background:var(--paper); box-shadow:0 12px 35px rgba(29,41,57,.16); overflow:hidden; }
     .print-head { display:flex; align-items:end; justify-content:space-between; margin:0 0 3mm; }
     h1 { margin:0; font-size:16pt; letter-spacing:-.04em; }
     .date { font-size:8pt; color:var(--muted); }
-    #fit { transform-origin:top left; }
-    table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:5.7pt; line-height:1.18; }
+    .fit { transform-origin:top left; }
+    table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:7.2pt; line-height:1.2; }
     th,td { border:.25mm solid var(--line); vertical-align:top; padding:.7mm; }
     th { background:#eff2f7; text-align:center; font-size:7pt; font-weight:800; }
     th:first-child,td.time { width:12mm; }
@@ -38,11 +39,13 @@
       body { background:#fff; }
       .toolbar { display:none !important; }
       main { padding:0; }
-      .paper { width:277mm; height:190mm; margin:0; padding:0; box-shadow:none; overflow:hidden; }
+      #pages { display:block; }
+      .paper { width:277mm; height:190mm; margin:0; padding:0; box-shadow:none; overflow:hidden; break-after:page; page-break-after:always; }
+      .paper:last-child { break-after:auto; page-break-after:auto; }
       h1 { font-size:13pt; }
       .print-head { margin-bottom:2mm; }
-      table { font-size:5.2pt; }
-      th { font-size:6.3pt; }
+      table { font-size:7pt; }
+      th { font-size:7.5pt; }
     }
     @media (max-width:900px) { main { overflow:auto; padding:10px; } .paper { margin:0; } .status { display:none; } }
   </style>
@@ -53,21 +56,16 @@
     <span class="status" id="status">시간표를 불러오는 중…</span>
     <label class="file-label" for="file">새 XLS 선택</label>
     <input id="file" type="file" accept=".xls,.html,.htm,text/html">
-    <button id="fitButton" type="button">한 페이지 맞춤</button>
-    <button class="primary" id="printButton" type="button">A4 가로 인쇄</button>
+    <button id="fitButton" type="button">두 페이지 맞춤</button>
+    <button class="primary" id="printButton" type="button">A4 가로 2장 인쇄</button>
   </header>
   <main>
-    <section class="paper" id="paper">
-      <div class="print-head"><h1>주간 시간표</h1><div class="date" id="dateLabel"></div></div>
-      <div id="fit"><div class="message">시간표를 불러오는 중입니다.</div></div>
-    </section>
+    <div id="pages"><section class="paper"><div class="print-head"><h1>주간 시간표</h1></div><div class="fit"><div class="message">시간표를 불러오는 중입니다.</div></div></section></div>
   </main>
   <script>
     const DAYS = ['시간','일','월','화','수','목','금','토'];
-    const fit = document.querySelector('#fit');
-    const paper = document.querySelector('#paper');
+    const pages = document.querySelector('#pages');
     const status = document.querySelector('#status');
-    let fitScale = 1;
 
     function decode(buffer) {
       try { return new TextDecoder('euc-kr').decode(buffer); }
@@ -111,25 +109,43 @@
 
     function esc(value) { const el=document.createElement('span'); el.textContent=value; return el.innerHTML; }
 
-    function render(rows, label='') {
+    function tableHtml(rows) {
       const body = rows.map(row => `<tr><td class="time">${esc(row.time)}</td>${row.days.map(groups => `<td>${groups.length ? groups.map(group => `<div class="class-card"><div><span class="class-name">${esc(group.name)}</span>${group.teacher ? `<span class="teacher">(${esc(group.teacher)})</span>`:''}</div>${group.students.length ? `<div class="students">${group.students.map(name => `<span class="student">${esc(name)}</span>`).join('')}</div>`:''}</div>`).join('') : ''}</td>`).join('')}</tr>`).join('');
-      fit.innerHTML = `<table aria-label="주간 시간표"><thead><tr>${DAYS.map((day,i)=>`<th class="${i===1?'sun':i===7?'sat':''}">${day}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
-      document.querySelector('#dateLabel').textContent = label;
-      status.textContent = `${rows.length}개 시간대 · 학생 가로 배치`;
-      requestAnimationFrame(scaleToPage);
+      return `<table aria-label="주간 시간표"><thead><tr>${DAYS.map((day,i)=>`<th class="${i===1?'sun':i===7?'sat':''}">${day}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
     }
 
-    function scaleToPage() {
-      fit.style.transform='none'; fit.style.width='100%';
-      const maxHeight = paper.clientHeight - document.querySelector('.print-head').offsetHeight - 12;
-      fitScale = Math.min(1, maxHeight / fit.scrollHeight);
-      fit.style.transform = `scale(${fitScale})`;
-      fit.style.width = `${100/fitScale}%`;
-      status.textContent = `${status.textContent.split(' · 맞춤')[0]} · 맞춤 ${Math.round(fitScale*100)}%`;
+    function rowWeight(row) {
+      const groups=row.days.flat();
+      return 1 + groups.length*2 + groups.reduce((sum,group)=>sum+group.students.length*.35,0);
+    }
+
+    function splitRows(rows) {
+      const weights=rows.map(rowWeight), total=weights.reduce((a,b)=>a+b,0);
+      let sum=0, best=Math.ceil(rows.length/2), gap=Infinity;
+      for(let i=0;i<rows.length-1;i++) { sum+=weights[i]; const nextGap=Math.abs(total*.44-sum); if(i>=5 && i<=rows.length-7 && nextGap<gap){ gap=nextGap; best=i+1; } }
+      return [rows.slice(0,best),rows.slice(best)];
+    }
+
+    function render(rows, label='') {
+      const halves=splitRows(rows);
+      pages.innerHTML=halves.map((part,index)=>`<section class="paper"><div class="print-head"><h1>주간 시간표 <small>${index+1}/2</small></h1><div class="date">${esc(label)}</div></div><div class="fit">${tableHtml(part)}</div></section>`).join('');
+      status.textContent = `${rows.length}개 시간대 · A4 가로 2페이지`;
+      requestAnimationFrame(scaleToPages);
+    }
+
+    function scaleToPages() {
+      const scales=[];
+      document.querySelectorAll('.paper').forEach(paper=>{
+        const fit=paper.querySelector('.fit'); fit.style.transform='none'; fit.style.width='100%';
+        const maxHeight=paper.clientHeight-paper.querySelector('.print-head').offsetHeight-12;
+        const scale=Math.min(1,maxHeight/fit.scrollHeight); scales.push(scale);
+        fit.style.transform=`scale(${scale})`; fit.style.width=`${100/scale}%`;
+      });
+      if(scales.length===2) status.textContent=`${status.textContent.split(' · 맞춤')[0]} · 맞춤 ${scales.map(v=>Math.round(v*100)+'%').join(' / ')}`;
     }
 
     function showFilePrompt() {
-      fit.innerHTML = '<div class="message">위의 ‘새 XLS 선택’ 버튼을 눌러<br>EduOK 주간 시간표 파일을 불러와 주세요.<br><br>파일은 서버로 전송되지 않고 이 브라우저에서만 처리됩니다.</div>';
+      pages.innerHTML = '<section class="paper"><div class="print-head"><h1>주간 시간표</h1></div><div class="fit"><div class="message">위의 ‘새 XLS 선택’ 버튼을 눌러<br>EduOK 주간 시간표 파일을 불러와 주세요.<br><br>파일은 서버로 전송되지 않고 이 브라우저에서만 처리됩니다.</div></div></section>';
       status.textContent='EduOK XLS 파일을 선택해 주세요';
     }
 
@@ -138,9 +154,9 @@
       try { render(parseSchedule(decode(await file.arrayBuffer())), file.name); }
       catch(error) { alert(error.message); }
     });
-    document.querySelector('#fitButton').addEventListener('click', scaleToPage);
-    document.querySelector('#printButton').addEventListener('click', () => { scaleToPage(); setTimeout(()=>window.print(),50); });
-    window.addEventListener('resize', scaleToPage);
+    document.querySelector('#fitButton').addEventListener('click', scaleToPages);
+    document.querySelector('#printButton').addEventListener('click', () => { scaleToPages(); setTimeout(()=>window.print(),50); });
+    window.addEventListener('resize', scaleToPages);
     showFilePrompt();
   </script>
 </body>
