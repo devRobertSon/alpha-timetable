@@ -102,7 +102,7 @@
           }
           node = node.nextSibling;
         }
-        classes.push({ name, teacher, students });
+        if (students.length > 0) classes.push({ name, teacher, students });
       }
       return classes;
     }
@@ -190,7 +190,7 @@
       catch(error) { alert(error.message); }
     });
     document.querySelector('#fitButton').addEventListener('click', scaleToPages);
-    document.querySelector('#printButton').addEventListener('click', () => { scaleToPages(); setTimeout(()=>window.print(),50); });
+    document.querySelector('#printButton').addEventListener('click', () => { scaleToPages(); window.print(); });
     window.addEventListener('resize', scaleToPages);
     showFilePrompt();
   </script>
