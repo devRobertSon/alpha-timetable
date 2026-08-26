@@ -21,7 +21,6 @@
     .teacher-table th:first-child,.teacher-table td.time { width:18mm; }
     .teacher-table th { background:#e9efff; font-size:8pt; }
     .teacher-table .class-name::after { content:''; }
-    .teacher-bracket { color:#475467; font-weight:700; }
     .blocking-error { margin:12mm auto; width:90%; padding:8mm; border:2px solid #f04438; border-radius:12px; background:#fff1f0; color:#912018; }
     .blocking-error h2 { margin:0 0 3mm; color:#b42318; font-size:15pt; }
     .blocking-error ul { columns:2; margin:3mm 0 0; padding-left:6mm; }
@@ -241,7 +240,7 @@
     function teacherDayTableHtml(rows,dayIndex) {
       const dayRows=rows.map(row=>({time:row.time,groups:row.days[dayIndex]})).filter(row=>row.groups.length);
       const teachers=[...new Set(dayRows.flatMap(row=>row.groups.map(group=>group.teacher)))].sort((a,b)=>a.localeCompare(b,'ko'));
-      const body=dayRows.map(row=>`<tr><td class="time">${esc(row.time)}</td>${teachers.map(teacher=>{const groups=row.groups.filter(group=>group.teacher===teacher); return `<td>${groups.map(group=>`<div class="class-card"><div><span class="class-name">${esc(group.name)}</span> <span class="teacher-bracket">[${esc(teacher)}]</span></div><div class="students">${group.students.map(name=>`<span class="student">${esc(name)}</span>`).join('')}</div></div>`).join('')}</td>`;}).join('')}</tr>`).join('');
+      const body=dayRows.map(row=>`<tr><td class="time">${esc(row.time)}</td>${teachers.map(teacher=>{const groups=row.groups.filter(group=>group.teacher===teacher); return `<td>${groups.map(group=>`<div class="class-card"><div><span class="class-name">${esc(group.name)}</span></div><div class="students">${group.students.map(name=>`<span class="student">${esc(name)}</span>`).join('')}</div></div>`).join('')}</td>`;}).join('')}</tr>`).join('');
       return `<table class="teacher-table" aria-label="강사별 주간 시간표의 하루 페이지"><thead><tr><th>시간</th>${teachers.map(teacher=>`<th>${esc(teacher)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
     }
 
