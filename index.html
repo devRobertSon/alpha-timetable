@@ -159,26 +159,38 @@
       });
     }
 
-    function weekdayTableHtml(rows) {
-      const body=rows.map(row=>`<tr><td class="time">${esc(row.time)}</td>${row.days.map(groups=>`<td>${groups.map(group=>`<div class="class-card"><div><span class="slot-source">${esc(group.sourceTime)}</span><span class="class-name">${esc(group.name)}</span>${group.teacher?`<span class="teacher">(${esc(group.teacher)})</span>`:''}</div>${group.students.length?`<div class="students">${group.students.map(name=>`<span class="student">${esc(name)}</span>`).join('')}</div>`:''}</div>`).join('')}</td>`).join('')}</tr>`).join('');
-      return `<table aria-label="평일 시간표"><thead><tr>${['시간','월','화','수','목','금'].map(day=>`<th>${day}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
+    function datesFromFileName(fileName) {
+      const match=fileName.match(/(20\d{2})[-_.](\d{2})[-_.](\d{2})/);
+      if(!match) return null;
+      const base=new Date(Date.UTC(Number(match[1]),Number(match[2])-1,Number(match[3])));
+      const mondayOffset=(base.getUTCDay()+6)%7;
+      const monday=new Date(base); monday.setUTCDate(base.getUTCDate()-mondayOffset);
+      return Array.from({length:7},(_,index)=>{const date=new Date(monday); date.setUTCDate(monday.getUTCDate()+index); return `${date.getUTCMonth()+1}/${date.getUTCDate()}`;});
     }
 
-    function weekendTableHtml(rows,dayIndex,dayName) {
+    function weekdayTableHtml(rows,weekDates) {
+      const body=rows.map(row=>`<tr><td class="time">${esc(row.time)}</td>${row.days.map(groups=>`<td>${groups.map(group=>`<div class="class-card"><div><span class="slot-source">${esc(group.sourceTime)}</span><span class="class-name">${esc(group.name)}</span>${group.teacher?`<span class="teacher">(${esc(group.teacher)})</span>`:''}</div>${group.students.length?`<div class="students">${group.students.map(name=>`<span class="student">${esc(name)}</span>`).join('')}</div>`:''}</div>`).join('')}</td>`).join('')}</tr>`).join('');
+      const dayNames=['월','화','수','목','금'];
+      const headers=['시간',...dayNames.map((day,index)=>weekDates?`${day} ${weekDates[index]}`:day)];
+      return `<table aria-label="평일 시간표"><thead><tr>${headers.map(day=>`<th>${day}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
+    }
+
+    function weekendTableHtml(rows,dayIndex,dayName,dateLabel='') {
       const filtered=rows.map(row=>({time:row.time,groups:row.days[dayIndex]})).filter(row=>row.groups.length);
       const body=filtered.map(row=>`<tr><td class="time">${esc(row.time)}</td><td>${row.groups.map(group=>`<div class="class-card"><div><span class="class-name">${esc(group.name)}</span>${group.teacher?`<span class="teacher">(${esc(group.teacher)})</span>`:''}</div>${group.students.length?`<div class="students">${group.students.map(name=>`<span class="student">${esc(name)}</span>`).join('')}</div>`:''}</div>`).join('')}</td></tr>`).join('');
-      return `<table class="weekend-table" aria-label="${dayName} 시간표"><thead><tr><th>시간</th><th>${dayName}</th></tr></thead><tbody>${body}</tbody></table>`;
+      return `<table class="weekend-table" aria-label="${dayName} 시간표"><thead><tr><th>시간</th><th>${dayName}${dateLabel?` ${dateLabel}`:''}</th></tr></thead><tbody>${body}</tbody></table>`;
     }
 
-    function combinedWeekendHtml(rows) {
-      return `<h2>토요일</h2>${weekendTableHtml(rows,6,'토요일')}<h2>일요일</h2>${weekendTableHtml(rows,0,'일요일')}`;
+    function combinedWeekendHtml(rows,weekDates) {
+      return `<h2>토요일${weekDates?` · ${weekDates[5]}`:''}</h2>${weekendTableHtml(rows,6,'토요일',weekDates?.[5])}<h2>일요일${weekDates?` · ${weekDates[6]}`:''}</h2>${weekendTableHtml(rows,0,'일요일',weekDates?.[6])}`;
     }
 
     function render(rows, label='') {
+      const weekDates=datesFromFileName(label);
       const sections=[
-        {kind:'weekday',title:'평일 · 월–금 · 15–17시 30분',html:weekdayTableHtml(weekdayRows(rows).slice(0,5))},
-        {kind:'weekday',title:'평일 · 월–금 · 18–20시 30분',html:weekdayTableHtml(weekdayRows(rows).slice(5))},
-        {kind:'weekend',title:'주말 시간표 · 토요일 / 일요일',html:combinedWeekendHtml(rows)}
+        {kind:'weekday',title:'평일 · 월–금 · 15–17시 30분',html:weekdayTableHtml(weekdayRows(rows).slice(0,5),weekDates)},
+        {kind:'weekday',title:'평일 · 월–금 · 18–20시 30분',html:weekdayTableHtml(weekdayRows(rows).slice(5),weekDates)},
+        {kind:'weekend',title:'주말 시간표 · 토요일 / 일요일',html:combinedWeekendHtml(rows,weekDates)}
       ];
       pages.innerHTML=sections.map((section,index)=>`<section class="paper ${section.kind}"><div class="print-head"><h1>${section.title} <small>${index+1}/3</small></h1><div class="date">${esc(label)}</div></div><div class="fit">${section.html}</div></section>`).join('');
       status.textContent = `평일 가로 2장·주말 세로 1장`;
