@@ -151,6 +151,22 @@
       return minute==='00'?`${hour}시`:`${hour}시 ${minute}분`;
     }
 
+    function classStartMinutes(className,fallbackTime='') {
+      const match=String(className).match(/(?:^|\D)((?:0[1-9]|1[0-2])(?:[0-5]\d))(?!\d)/);
+      if(match) {
+        let hour=Number(match[1].slice(0,2)), minute=Number(match[1].slice(2));
+        if(hour>=1&&hour<=11) hour+=12;
+        return hour*60+minute;
+      }
+      return toMinutes(fallbackTime);
+    }
+
+    function displayMinutes12(minutes) {
+      let hour=Math.floor(minutes/60)%24; const minute=minutes%60;
+      if(hour>12) hour-=12;
+      return minute?`${hour}시 ${String(minute).padStart(2,'0')}분`:`${hour}시`;
+    }
+
     function tableHtml(rows) {
       const body = rows.map(row => `<tr><td class="time">${esc(row.time)}</td>${row.days.map(groups => `<td>${groups.length ? groups.map(group => `<div class="class-card"><div><span class="class-name">${esc(group.name)}</span>${group.teacher ? `<span class="teacher">(${esc(group.teacher)})</span>`:''}</div>${group.students.length ? `<div class="students">${group.students.map(name => `<span class="student">${esc(name)}</span>`).join('')}</div>`:''}</div>`).join('') : ''}</td>`).join('')}</tr>`).join('');
       return `<table aria-label="주간 시간표"><thead><tr>${DAYS.map((day,i)=>`<th class="${i===1?'sun':i===7?'sat':''}">${day}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
@@ -164,25 +180,15 @@
     }
 
     function weekdayRows(rows) {
-      const slots=[
-        {label:'3시',start:15*60,end:15*60+30},
-        {label:'3시 30분',start:15*60+30,end:16*60},
-        {label:'4시',start:16*60,end:17*60},
-        {label:'5시',start:17*60,end:17*60+30},
-        {label:'5시 30분',start:17*60+30,end:18*60},
-        {label:'6시',start:18*60,end:19*60},
-        {label:'7시',start:19*60,end:20*60},
-        {label:'8시',start:20*60,end:20*60+30},
-        {label:'8시 30분',start:20*60+30,end:21*60}
-      ];
-      return slots.map(slot=>{
-        const {start,end}=slot;
-        const matching=rows.filter(row=>{const minute=toMinutes(row.time); return minute>=start && minute<end;});
-        return {
-          time:slot.label,
-          days:Array.from({length:5},(_,day)=>matching.flatMap(row=>row.days[day+1].map(group=>({...group,sourceTime:displayTime12(row.time)}))))
-        };
-      });
+      const entries=Array.from({length:5},(_,day)=>rows.flatMap(row=>row.days[day+1].map(group=>({
+        ...group,startMinutes:classStartMinutes(group.name,row.time)
+      }))));
+      const starts=[...new Set(entries.flatMap(groups=>groups.map(group=>group.startMinutes)))].sort((a,b)=>a-b);
+      return starts.map(start=>({
+        time:displayMinutes12(start),
+        startMinutes:start,
+        days:entries.map(groups=>groups.filter(group=>group.startMinutes===start).map(group=>({...group,sourceTime:displayMinutes12(start)})))
+      }));
     }
 
     function datesFromFileName(fileName) {
@@ -202,7 +208,10 @@
     }
 
     function weekendTableHtml(rows,dayIndex,dayName,dateLabel='') {
-      const filtered=rows.map(row=>({time:displayTime12(row.time),groups:row.days[dayIndex]})).filter(row=>row.groups.length);
+      const groups=rows.flatMap(row=>row.days[dayIndex].map(group=>({...group,startMinutes:classStartMinutes(group.name,row.time)})));
+      const filtered=[...new Set(groups.map(group=>group.startMinutes))].sort((a,b)=>a-b).map(start=>({
+        time:displayMinutes12(start),groups:groups.filter(group=>group.startMinutes===start)
+      }));
       const body=filtered.map(row=>`<tr><td class="time">${esc(row.time)}</td><td>${row.groups.map(group=>`<div class="class-card"><div><span class="class-name">${esc(group.name)}</span>${group.teacher?`<span class="teacher">(${esc(group.teacher)})</span>`:''}</div>${group.students.length?`<div class="students">${group.students.map(name=>`<span class="student">${esc(name)}</span>`).join('')}</div>`:''}</div>`).join('')}</td></tr>`).join('');
       return `<table class="weekend-table" aria-label="${dayName} 시간표"><thead><tr><th>시간</th><th>${dayName}${dateLabel?` ${dateLabel}`:''}</th></tr></thead><tbody>${body}</tbody></table>`;
     }
@@ -215,8 +224,8 @@
       outputBlocked=false;
       const weekDates=datesFromFileName(label);
       const sections=[
-        {kind:'weekday',title:'평일 · 월–금 · 3–5시 30분',html:weekdayTableHtml(weekdayRows(rows).slice(0,5).filter(row=>row.days.some(groups=>groups.length)),weekDates)},
-        {kind:'weekday',title:'평일 · 월–금 · 6–8시 30분',html:weekdayTableHtml(weekdayRows(rows).slice(5).filter(row=>row.days.some(groups=>groups.length)),weekDates)},
+        {kind:'weekday',title:'평일 · 월–금 · 6시 이전',html:weekdayTableHtml(weekdayRows(rows).filter(row=>row.startMinutes<18*60),weekDates)},
+        {kind:'weekday',title:'평일 · 월–금 · 6시 이후',html:weekdayTableHtml(weekdayRows(rows).filter(row=>row.startMinutes>=18*60),weekDates)},
         {kind:'weekend',title:'주말 시간표 · 토요일 / 일요일',html:combinedWeekendHtml(rows,weekDates)}
       ];
       pages.innerHTML=sections.map(section=>`<section class="paper ${section.kind}"><div class="print-head"><h1>${section.title}</h1><div class="date">${esc(label)}</div></div><div class="fit">${section.html}</div></section>`).join('');
@@ -228,7 +237,7 @@
       const missing=[];
       const weekDates=datesFromFileName(label);
       rows.forEach(row=>row.days.forEach((groups,dayIndex)=>groups.forEach(group=>{
-        if(group.students.length&&!group.teacher) missing.push(`${dayDateLabel(dayIndex,weekDates)} · ${displayTime12(row.time)} · ${group.name}`);
+        if(group.students.length&&!group.teacher) missing.push(`${dayDateLabel(dayIndex,weekDates)} · ${displayMinutes12(classStartMinutes(group.name,row.time))} · ${group.name}`);
       })));
       return [...new Set(missing)];
     }
@@ -246,7 +255,10 @@
     }
 
     function teacherDayTableHtml(rows,dayIndex) {
-      const dayRows=rows.map(row=>({time:displayTime12(row.time),groups:row.days[dayIndex]})).filter(row=>row.groups.length);
+      const allGroups=rows.flatMap(row=>row.days[dayIndex].map(group=>({...group,startMinutes:classStartMinutes(group.name,row.time)})));
+      const dayRows=[...new Set(allGroups.map(group=>group.startMinutes))].sort((a,b)=>a-b).map(start=>({
+        time:displayMinutes12(start),groups:allGroups.filter(group=>group.startMinutes===start)
+      }));
       const teachers=[...new Set(dayRows.flatMap(row=>row.groups.map(group=>group.teacher)))].sort((a,b)=>a.localeCompare(b,'ko'));
       const body=dayRows.map(row=>`<tr><td class="time">${esc(row.time)}</td>${teachers.map(teacher=>{const groups=row.groups.filter(group=>group.teacher===teacher); return `<td>${groups.map(group=>`<div class="class-card"><div><span class="class-name">${esc(group.name)}</span></div><div class="students">${group.students.map(name=>`<span class="student">${esc(name)}</span>`).join('')}</div></div>`).join('')}</td>`;}).join('')}</tr>`).join('');
       return `<table class="teacher-table" aria-label="강사별 주간 시간표의 하루 페이지"><thead><tr><th>시간</th>${teachers.map(teacher=>`<th>${esc(teacher)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
