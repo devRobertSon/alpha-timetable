@@ -67,7 +67,7 @@
     <label class="file-label" for="file">새 XLS 선택</label>
     <input id="file" type="file" accept=".xls,.html,.htm,text/html">
     <button id="fitButton" type="button">페이지 맞춤</button>
-    <button class="primary" id="printButton" type="button">A4 3장 인쇄</button>
+    <button class="primary" id="pdfButton" type="button">PDF 새 탭에서 보기</button>
   </header>
   <main>
     <div id="pages"><section class="paper weekday"><div class="print-head"><h1>주간 시간표</h1></div><div class="fit"><div class="message">시간표를 불러오는 중입니다.</div></div></section></div>
@@ -184,13 +184,77 @@
       status.textContent='EduOK XLS 파일을 선택해 주세요';
     }
 
+    function bytes(value) { return new TextEncoder().encode(value); }
+
+    function joinBytes(parts) {
+      const length=parts.reduce((sum,part)=>sum+part.length,0), result=new Uint8Array(length);
+      let offset=0; for(const part of parts){ result.set(part,offset); offset+=part.length; }
+      return result;
+    }
+
+    async function elementToJpeg(element) {
+      const width=element.clientWidth, height=element.clientHeight;
+      const css=document.querySelector('style').textContent;
+      const markup=`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml"><style>${css}</style>${element.outerHTML}</div></foreignObject></svg>`;
+      const sourceUrl=URL.createObjectURL(new Blob([markup],{type:'image/svg+xml;charset=utf-8'}));
+      try {
+        const image=await new Promise((resolve,reject)=>{const img=new Image(); img.onload=()=>resolve(img); img.onerror=()=>reject(new Error('시간표 화면을 이미지로 변환하지 못했습니다.')); img.src=sourceUrl;});
+        const canvas=document.createElement('canvas'); canvas.width=width*2; canvas.height=height*2;
+        const context=canvas.getContext('2d'); context.fillStyle='#fff'; context.fillRect(0,0,canvas.width,canvas.height); context.drawImage(image,0,0,canvas.width,canvas.height);
+        const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.95));
+        if(!blob) throw new Error('PDF용 이미지를 만들지 못했습니다.');
+        return {data:new Uint8Array(await blob.arrayBuffer()),width:canvas.width,height:canvas.height};
+      } finally { URL.revokeObjectURL(sourceUrl); }
+    }
+
+    function buildPdf(images) {
+      const objectCount=2+images.length*3, objects=new Array(objectCount+1);
+      objects[1]=bytes('<< /Type /Catalog /Pages 2 0 R >>');
+      const pageRefs=images.map((_,index)=>`${3+index*3} 0 R`).join(' ');
+      objects[2]=bytes(`<< /Type /Pages /Kids [${pageRefs}] /Count ${images.length} >>`);
+      images.forEach((image,index)=>{
+        const pageObject=3+index*3, imageObject=pageObject+1, contentObject=pageObject+2;
+        const landscape=index<2, pageWidth=landscape?841.89:595.28, pageHeight=landscape?595.28:841.89, margin=28.35;
+        const ratio=Math.min((pageWidth-margin*2)/image.width,(pageHeight-margin*2)/image.height);
+        const drawWidth=image.width*ratio, drawHeight=image.height*ratio, x=(pageWidth-drawWidth)/2, y=(pageHeight-drawHeight)/2;
+        const content=bytes(`q ${drawWidth.toFixed(2)} 0 0 ${drawHeight.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)} cm /Im0 Do Q`);
+        objects[pageObject]=bytes(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /XObject << /Im0 ${imageObject} 0 R >> >> /Contents ${contentObject} 0 R >>`);
+        objects[imageObject]=joinBytes([bytes(`<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${image.data.length} >>\nstream\n`),image.data,bytes('\nendstream')]);
+        objects[contentObject]=joinBytes([bytes(`<< /Length ${content.length} >>\nstream\n`),content,bytes('\nendstream')]);
+      });
+      const parts=[bytes('%PDF-1.4\n%âãÏÓ\n')], offsets=new Array(objectCount+1).fill(0); let position=parts[0].length;
+      for(let index=1;index<=objectCount;index++){ offsets[index]=position; const part=joinBytes([bytes(`${index} 0 obj\n`),objects[index],bytes('\nendobj\n')]); parts.push(part); position+=part.length; }
+      const xrefPosition=position;
+      let xref=`xref\n0 ${objectCount+1}\n0000000000 65535 f \n`;
+      for(let index=1;index<=objectCount;index++) xref+=`${String(offsets[index]).padStart(10,'0')} 00000 n \n`;
+      parts.push(bytes(`${xref}trailer\n<< /Size ${objectCount+1} /Root 1 0 R >>\nstartxref\n${xrefPosition}\n%%EOF`));
+      return new Blob(parts,{type:'application/pdf'});
+    }
+
+    async function openPdfInNewTab() {
+      const pdfTab=window.open('','_blank');
+      if(!pdfTab) { alert('새 탭이 차단되었습니다. 이 사이트의 팝업을 허용한 뒤 다시 눌러 주세요.'); return; }
+      pdfTab.document.write('<!doctype html><meta charset="utf-8"><title>PDF 생성 중</title><style>body{font-family:sans-serif;padding:40px;text-align:center;color:#344054}</style><p>시간표 PDF를 생성하고 있습니다…</p>');
+      try {
+        scaleToPages();
+        const pageElements=[...document.querySelectorAll('.paper')];
+        if(pageElements.length!==3) throw new Error('먼저 EduOK XLS 파일을 선택해 주세요.');
+        const images=[]; for(const element of pageElements) images.push(await elementToJpeg(element));
+        const url=URL.createObjectURL(buildPdf(images));
+        pdfTab.location.replace(url);
+        setTimeout(()=>URL.revokeObjectURL(url),120000);
+      } catch(error) {
+        pdfTab.document.body.innerHTML=`<p>PDF 생성에 실패했습니다.</p><p>${esc(error.message)}</p>`;
+      }
+    }
+
     document.querySelector('#file').addEventListener('change', async event => {
       const file=event.target.files[0]; if(!file) return;
       try { render(parseSchedule(decode(await file.arrayBuffer())), file.name); }
       catch(error) { alert(error.message); }
     });
     document.querySelector('#fitButton').addEventListener('click', scaleToPages);
-    document.querySelector('#printButton').addEventListener('click', () => { scaleToPages(); window.print(); });
+    document.querySelector('#pdfButton').addEventListener('click', openPdfInNewTab);
     window.addEventListener('resize', scaleToPages);
     showFilePrompt();
   </script>
