@@ -280,9 +280,16 @@
       const dayRows=[...new Set(allGroups.map(group=>group.startMinutes))].sort((a,b)=>a-b).map(start=>({
         time:displayMinutes12(start),groups:allGroups.filter(group=>group.startMinutes===start)
       }));
-      const teachers=[...new Set(dayRows.flatMap(row=>row.groups.map(group=>group.teacher)))].sort((a,b)=>a.localeCompare(b,'ko'));
+      const teachers=[...new Set(dayRows.flatMap(row=>row.groups.map(group=>group.teacher)))].filter(Boolean).sort((a,b)=>a.localeCompare(b,'ko'));
       const body=dayRows.map(row=>`<tr><td class="time">${esc(row.time)}</td>${teachers.map(teacher=>{const groups=row.groups.filter(group=>group.teacher===teacher); return `<td>${groups.map(group=>`<div class="class-card"><div><span class="class-name">${esc(group.name)}</span></div><div class="students">${group.students.map(name=>`<span class="student">${esc(name)}</span>`).join('')}</div></div>`).join('')}</td>`;}).join('')}</tr>`).join('');
       return `<table class="teacher-table" aria-label="강사별 주간 시간표의 하루 페이지"><thead><tr><th>시간</th>${teachers.map(teacher=>`<th>${esc(teacher)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
+    }
+
+    function teacherWeekPagesHtml(rows,label,weekDates) {
+      return [1,2,3,4,5,6,0].map(dayIndex=>{
+        const dateLabel=dayDateLabel(dayIndex,weekDates);
+        return `<section class="paper weekday"><div class="print-head"><h1>강사별 주간 시간표 · ${esc(dateLabel)}</h1><div class="date">${esc(label)}</div></div><div class="fit">${teacherDayTableHtml(rows,dayIndex)}</div></section>`;
+      }).join('');
     }
 
     function roomDayTableHtml(rows,dayIndex) {
@@ -299,15 +306,12 @@
       const weekDates=datesFromFileName(label), missing=missingTeacherClasses(rows,label);
       if(missing.length) {
         outputBlocked=true;
-        pages.innerHTML=`<section class="paper weekday"><div class="print-head"><h1>강사별 주간 시간표</h1><div class="date">${esc(label)}</div></div><div class="blocking-error"><h2>강사명이 없는 수업이 있어 시간표를 출력할 수 없습니다.</h2><p>EduOK에서 아래 수업에 강사를 지정한 뒤 파일을 다시 내려받아 주세요.</p><ul>${missing.map(name=>`<li>${esc(name)}</li>`).join('')}</ul></div></section>`;
-        status.textContent=`강사명 누락 ${missing.length}개 · PDF 및 인쇄 불가`;
+        pages.innerHTML=`<div class="blocking-error"><h2>강사명이 없는 수업 ${missing.length}개 때문에 PDF와 인쇄를 할 수 없습니다.</h2><p>아래에는 강사명이 정상 입력된 수업만 미리 표시합니다. EduOK에서 누락 수업에 강사를 지정한 뒤 파일을 다시 내려받아 주세요.</p><ul>${missing.map(name=>`<li>${esc(name)}</li>`).join('')}</ul></div>${teacherWeekPagesHtml(rows,label,weekDates)}`;
+        status.textContent=`정상 강사 수업 미리보기 · 강사명 누락 ${missing.length}개 · PDF 및 인쇄 불가`;
+        requestAnimationFrame(scaleToPages);
       } else {
         outputBlocked=false;
-        const dayIndexes=[1,2,3,4,5,6,0];
-        pages.innerHTML=dayIndexes.map(dayIndex=>{
-          const dateLabel=dayDateLabel(dayIndex,weekDates);
-          return `<section class="paper weekday"><div class="print-head"><h1>강사별 주간 시간표 · ${esc(dateLabel)}</h1><div class="date">${esc(label)}</div></div><div class="fit">${teacherDayTableHtml(rows,dayIndex)}</div></section>`;
-        }).join('');
+        pages.innerHTML=teacherWeekPagesHtml(rows,label,weekDates);
         status.textContent='강사별 주간 시간표 · 월–일 7장 · 하루 1페이지 · A4 가로';
         requestAnimationFrame(scaleToPages);
       }
