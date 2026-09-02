@@ -315,7 +315,12 @@
 
     function renderRooms(rows,label='') {
       const weekDates=datesFromFileName(label), missing=missingRoomClasses(rows,label);
-      if(missing.length) {
+      const detectedRooms=[...new Set(rows.flatMap(row=>row.days.flatMap(groups=>groups.map(group=>group.room))))].filter(Boolean);
+      if(!detectedRooms.length) {
+        outputBlocked=true;
+        pages.innerHTML=`<section class="paper weekday"><div class="print-head"><h1>강의실별 주간 시간표</h1><div class="date">${esc(label)}</div></div><div class="blocking-error"><h2>업로드한 XLS 파일에 강의실 정보가 포함되어 있지 않습니다.</h2><p>EduOK 화면에 강의실이 표시되어도 현재 내려받은 ‘주간 시간표’ XLS에는 반명, 강사명, 학생명만 들어 있습니다. 강의실이 포함되는 다른 출력 양식이 있다면 그 파일을 내려받아 업로드해 주세요.</p></div></section>`;
+        status.textContent='XLS에 강의실 정보 없음 · PDF 및 인쇄 불가';
+      } else if(missing.length) {
         outputBlocked=true;
         pages.innerHTML=`<section class="paper weekday"><div class="print-head"><h1>강의실별 주간 시간표</h1><div class="date">${esc(label)}</div></div><div class="blocking-error"><h2>강의실이 없는 수업이 있어 시간표를 출력할 수 없습니다.</h2><p>EduOK에서 아래 수업에 강의실을 지정한 뒤 파일을 다시 내려받아 주세요.</p><ul>${missing.map(name=>`<li>${esc(name)}</li>`).join('')}</ul></div></section>`;
         status.textContent=`강의실 누락 ${missing.length}개 · PDF 및 인쇄 불가`;
