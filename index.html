@@ -111,31 +111,30 @@
 
     function parseCell(td) {
       const classes = [];
-      const bigs = [...td.querySelectorAll('big')];
-      for (const big of bigs) {
-        const name = clean(big.textContent);
-        const nameFont = big.closest('font');
-        const teacherFont = nameFont?.nextElementSibling;
-        const teacher = teacherFont?.tagName === 'FONT' ? clean(teacherFont.textContent).replace(/^\(|\)$/g,'') : '';
-        const students = []; let room=''; let studentMarker=false;
-        let node = teacherFont?.nextSibling;
+      const isClassFont=font=>{
+        if(font.querySelector('big')) return true;
+        const style=(font.getAttribute('style')||'').toLowerCase();
+        return /color\s*:\s*#23837c/.test(style) && /font-size\s*:\s*12px/.test(style) && clean(font.textContent);
+      };
+      const classFonts=[...td.querySelectorAll('font')].filter(isClassFont);
+      for (const nameFont of classFonts) {
+        const name = clean(nameFont.querySelector('big')?.textContent || nameFont.textContent);
+        let teacher='', room=''; const students=[];
+        let node = nameFont.nextSibling, seenBreak=false;
         while (node) {
-          if (node.nodeType === 1 && node.querySelector?.('big')) break;
+          if(node.nodeType===1 && node.tagName==='FONT' && isClassFont(node)) break;
+          if(node.nodeType===1 && node.tagName==='BR') seenBreak=true;
+          if(node.nodeType===1 && node.tagName==='SMALL') {
+            const value=clean(node.textContent).replace(/^\[|\]$/g,'');
+            const style=(node.getAttribute('style')||'').toLowerCase();
+            if(/강의실|교실|호실/i.test(value)) room=value;
+            else if(!/font-size\s*:\s*10px/.test(style)) teacher=value;
+          }
           if (node.nodeType === 1 && node.tagName === 'FONT') {
             const value = clean(node.textContent);
-            const roomHint=`${node.getAttribute('class')||''} ${node.getAttribute('title')||''} ${node.getAttribute('data-type')||''}`;
-            if(value==='○') studentMarker=true;
-            else if(value && value!=='()') {
-              const explicitRoom=/^(?:강의실|교실|room)\s*[:：-]?\s*(.+)$/i.exec(value)
-                || /^(.+?)(?:강의실|교실|호실)$/i.exec(value)
-                || /^\[([^\]]+)\]$/.exec(value);
-              if(!room && (explicitRoom || /강의실|교실|room/i.test(roomHint))) room=clean(explicitRoom?.[1]||value).replace(/^\[|\]$/g,'');
-              else {
-                const student=value.replace(/^○\s*/,'');
-                if(student) students.push(student);
-                studentMarker=false;
-              }
-            }
+            const style=(node.getAttribute('style')||'').toLowerCase();
+            if(!seenBreak && /font-size\s*:\s*12px/.test(style) && /^\(.*\)$/.test(value)) teacher=value.replace(/^\(|\)$/g,'');
+            else if(/font-size\s*:\s*13px/.test(style) && value && value!=='○') students.push(value.replace(/^○\s*/,''));
           }
           node = node.nextSibling;
         }
@@ -302,6 +301,13 @@
       return `<table class="teacher-table" aria-label="강의실별 주간 시간표의 하루 페이지"><thead><tr><th>시간</th>${rooms.map(room=>`<th>${esc(room)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
     }
 
+    function roomWeekPagesHtml(rows,label,weekDates) {
+      return [1,2,3,4,5,6,0].map(dayIndex=>{
+        const dateLabel=dayDateLabel(dayIndex,weekDates);
+        return `<section class="paper weekday"><div class="print-head"><h1>강의실별 주간 시간표 · ${esc(dateLabel)}</h1><div class="date">${esc(label)}</div></div><div class="fit">${roomDayTableHtml(rows,dayIndex)}</div></section>`;
+      }).join('');
+    }
+
     function renderDaily(rows,label='') {
       const weekDates=datesFromFileName(label), missing=missingTeacherClasses(rows,label);
       if(missing.length) {
@@ -326,14 +332,12 @@
         status.textContent='XLS에 강의실 정보 없음 · PDF 및 인쇄 불가';
       } else if(missing.length) {
         outputBlocked=true;
-        pages.innerHTML=`<section class="paper weekday"><div class="print-head"><h1>강의실별 주간 시간표</h1><div class="date">${esc(label)}</div></div><div class="blocking-error"><h2>강의실이 없는 수업이 있어 시간표를 출력할 수 없습니다.</h2><p>EduOK에서 아래 수업에 강의실을 지정한 뒤 파일을 다시 내려받아 주세요.</p><ul>${missing.map(name=>`<li>${esc(name)}</li>`).join('')}</ul></div></section>`;
-        status.textContent=`강의실 누락 ${missing.length}개 · PDF 및 인쇄 불가`;
+        pages.innerHTML=`<div class="blocking-error"><h2>강의실이 없는 수업 ${missing.length}개 때문에 PDF와 인쇄를 할 수 없습니다.</h2><p>아래에는 강의실이 정상 입력된 수업만 미리 표시합니다. EduOK에서 누락 수업에 강의실을 지정한 뒤 파일을 다시 내려받아 주세요.</p><ul>${missing.map(name=>`<li>${esc(name)}</li>`).join('')}</ul></div>${roomWeekPagesHtml(rows,label,weekDates)}`;
+        status.textContent=`입력된 강의실 수업 미리보기 · 강의실 누락 ${missing.length}개 · PDF 및 인쇄 불가`;
+        requestAnimationFrame(scaleToPages);
       } else {
         outputBlocked=false;
-        pages.innerHTML=[1,2,3,4,5,6,0].map(dayIndex=>{
-          const dateLabel=dayDateLabel(dayIndex,weekDates);
-          return `<section class="paper weekday"><div class="print-head"><h1>강의실별 주간 시간표 · ${esc(dateLabel)}</h1><div class="date">${esc(label)}</div></div><div class="fit">${roomDayTableHtml(rows,dayIndex)}</div></section>`;
-        }).join('');
+        pages.innerHTML=roomWeekPagesHtml(rows,label,weekDates);
         status.textContent='강의실별 주간 시간표 · 월–일 7장 · 하루 1페이지 · A4 가로';
         requestAnimationFrame(scaleToPages);
       }
