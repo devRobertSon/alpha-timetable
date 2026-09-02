@@ -109,6 +109,12 @@
 
     function clean(text) { return text.replace(/\s+/g,' ').trim(); }
 
+    function normalizeRoom(value) {
+      const room=clean(value).replace(/^\[|\]$/g,'');
+      const numbered=room.match(/(\d+\s*강의실)$/);
+      return numbered?numbered[1].replace(/\s+/g,''):room;
+    }
+
     function parseCell(td) {
       const classes = [];
       const isClassFont=font=>{
@@ -127,7 +133,7 @@
           if(node.nodeType===1 && node.tagName==='SMALL') {
             const value=clean(node.textContent).replace(/^\[|\]$/g,'');
             const style=(node.getAttribute('style')||'').toLowerCase();
-            if(/강의실|교실|호실/i.test(value)) room=value;
+            if(/강의실|교실|호실/i.test(value)) room=normalizeRoom(value);
             else if(!/font-size\s*:\s*10px/.test(style)) teacher=value;
           }
           if (node.nodeType === 1 && node.tagName === 'FONT') {
