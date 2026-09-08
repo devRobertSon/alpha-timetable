@@ -173,7 +173,7 @@
       const match=String(className).match(/(?:^|\D)((?:0[1-9]|1[0-2])(?:[0-5]\d))(?!\d)/);
       if(match) {
         let hour=Number(match[1].slice(0,2)), minute=Number(match[1].slice(2));
-        if(hour>=1&&hour<=11) hour+=12;
+        if(hour>=1&&hour<=8) hour+=12;
         return hour*60+minute;
       }
       return toMinutes(fallbackTime);
