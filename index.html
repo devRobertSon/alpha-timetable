@@ -50,6 +50,16 @@
     .students { display:inline; margin-left:1.4mm; color:#101828; }
     .student { display:inline-block; margin-right:1.5mm; white-space:nowrap; }
     .slot-source { display:inline; margin-right:1.1mm; color:#667085; font-size:.85em; font-weight:800; }
+    .absence-section { margin-top:3mm; }
+    .absence-section h2 { margin:0 0 1mm; font-size:9pt; }
+    .absence-table { font-size:7.2pt; line-height:1.15; }
+    .absence-table th,.absence-table td { padding:1mm 1.4mm; vertical-align:middle; }
+    .absence-table th:nth-child(1) { width:18%; }
+    .absence-table th:nth-child(2) { width:37%; }
+    .absence-table th:nth-child(3) { width:45%; }
+    .absent-name { font-weight:800; }
+    .absence-options { font-weight:700; white-space:nowrap; }
+    .no-absence { padding:2mm 3mm; border:.25mm solid var(--line); background:#f7f8fa; color:var(--muted); font-size:7.2pt; }
     .weekend-table th:first-child,.weekend-table td.time { width:22mm; }
     .weekend-table { font-size:7.5pt; }
     .empty { color:#98a2b3; text-align:center; }
@@ -125,7 +135,7 @@
       const classFonts=[...td.querySelectorAll('font')].filter(isClassFont);
       for (const nameFont of classFonts) {
         const name = clean(nameFont.querySelector('big')?.textContent || nameFont.textContent);
-        let teacher='', room=''; const students=[];
+        let teacher='', room='', pendingMarker=''; const students=[], absentees=[];
         let node = nameFont.nextSibling, seenBreak=false;
         while (node) {
           if(node.nodeType===1 && node.tagName==='FONT' && isClassFont(node)) break;
@@ -139,12 +149,18 @@
           if (node.nodeType === 1 && node.tagName === 'FONT') {
             const value = clean(node.textContent);
             const style=(node.getAttribute('style')||'').toLowerCase();
-            if(!seenBreak && /font-size\s*:\s*12px/.test(style) && /^\(.*\)$/.test(value)) teacher=value.replace(/^\(|\)$/g,'');
-            else if(/font-size\s*:\s*13px/.test(style) && value && value!=='○') students.push(value.replace(/^○\s*/,''));
+            if(/^[○△□X]$/i.test(value)) pendingMarker=value.toUpperCase();
+            else if(!seenBreak && /font-size\s*:\s*12px/.test(style) && /^\(.*\)$/.test(value)) teacher=value.replace(/^\(|\)$/g,'');
+            else if(/font-size\s*:\s*13px/.test(style) && value) {
+              const student=value.replace(/^[○△□X]\s*/i,'');
+              students.push(student);
+              if(pendingMarker==='X' || /^X\s*/i.test(value)) absentees.push(student);
+              pendingMarker='';
+            }
           }
           node = node.nextSibling;
         }
-        if (students.length > 0) classes.push({ name, teacher, room, students });
+        if (students.length > 0) classes.push({ name, teacher, room, students, absentees });
       }
       return classes;
     }
@@ -280,20 +296,48 @@
       controls.hidden=true;
     }
 
-    function teacherDayTableHtml(rows,dayIndex) {
+    function teacherNamesForDay(rows,dayIndex) {
+      return [...new Set(rows.flatMap(row=>row.days[dayIndex].map(group=>group.teacher)))].filter(Boolean).sort((a,b)=>a.localeCompare(b,'ko'));
+    }
+
+    function teacherDayTableHtml(rows,dayIndex,teacherSubset=null) {
       const allGroups=rows.flatMap(row=>row.days[dayIndex].map(group=>({...group,startMinutes:classStartMinutes(group.name,row.time)})));
       const dayRows=[...new Set(allGroups.map(group=>group.startMinutes))].sort((a,b)=>a-b).map(start=>({
         time:displayMinutes12(start),groups:allGroups.filter(group=>group.startMinutes===start)
       }));
-      const teachers=[...new Set(dayRows.flatMap(row=>row.groups.map(group=>group.teacher)))].filter(Boolean).sort((a,b)=>a.localeCompare(b,'ko'));
+      const teachers=teacherSubset || teacherNamesForDay(rows,dayIndex);
       const body=dayRows.map(row=>`<tr><td class="time">${esc(row.time)}</td>${teachers.map(teacher=>{const groups=row.groups.filter(group=>group.teacher===teacher); return `<td>${groups.map(group=>`<div class="class-card"><div><span class="class-name">${esc(group.name)}</span></div><div class="students">${group.students.map(name=>`<span class="student">${esc(name)}</span>`).join('')}</div></div>`).join('')}</td>`;}).join('')}</tr>`).join('');
       return `<table class="teacher-table" aria-label="강사별 주간 시간표의 하루 페이지"><thead><tr><th>시간</th>${teachers.map(teacher=>`<th>${esc(teacher)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
     }
 
+    function absenceTableHtml(rows,dayIndex,mode,allowedValues=null) {
+      const seen=new Set(), absences=[];
+      rows.forEach(row=>row.days[dayIndex].forEach(group=>{
+        const owner=mode==='teacher'?group.teacher:group.room;
+        if(!owner || (allowedValues && !allowedValues.includes(owner))) return;
+        (group.absentees||[]).forEach(student=>{
+          const key=[student,group.name,owner].join('\u0000');
+          if(seen.has(key)) return;
+          seen.add(key); absences.push({student,className:group.name});
+        });
+      }));
+      const content=absences.length
+        ? `<table class="absence-table" aria-label="결석자"><thead><tr><th>결석자</th><th>수업</th><th>처리 선택</th></tr></thead><tbody>${absences.map(item=>`<tr><td><span class="absent-name">${esc(item.student)}</span></td><td><span class="absent-class">${esc(item.className)}</span></td><td><span class="absence-options">□ 수강취소　 □ 동영상　 □ 주중보강</span></td></tr>`).join('')}</tbody></table>`
+        : `<div class="no-absence">결석자 없음</div>`;
+      return `<section class="absence-section"><h2>결석자</h2>${content}</section>`;
+    }
+
     function teacherWeekPagesHtml(rows,label,weekDates) {
-      return [1,2,3,4,5,6,0].map(dayIndex=>{
+      return [1,2,3,4,5,6,0].flatMap(dayIndex=>{
         const dateLabel=dayDateLabel(dayIndex,weekDates);
-        return `<section class="paper weekday"><div class="print-head"><h1>강사별 주간 시간표 · ${esc(dateLabel)}</h1><div class="date">${esc(label)}</div></div><div class="fit">${teacherDayTableHtml(rows,dayIndex)}</div></section>`;
+        const teachers=teacherNamesForDay(rows,dayIndex);
+        const chunks=teachers.length>8
+          ? [teachers.slice(0,Math.ceil(teachers.length/2)),teachers.slice(Math.ceil(teachers.length/2))]
+          : [teachers];
+        return chunks.map(chunk=>{
+          const range=chunks.length>1 && chunk.length?` · ${esc(chunk[0])}–${esc(chunk[chunk.length-1])}`:'';
+          return `<section class="paper weekday"><div class="print-head"><h1>강사별 주간 시간표 · ${esc(dateLabel)}${range}</h1><div class="date">${esc(label)}</div></div><div class="fit">${teacherDayTableHtml(rows,dayIndex,chunk)}${absenceTableHtml(rows,dayIndex,'teacher',chunk)}</div></section>`;
+        });
       }).join('');
     }
 
@@ -310,7 +354,7 @@
     function roomWeekPagesHtml(rows,label,weekDates) {
       return [1,2,3,4,5,6,0].map(dayIndex=>{
         const dateLabel=dayDateLabel(dayIndex,weekDates);
-        return `<section class="paper weekday"><div class="print-head"><h1>강의실별 주간 시간표 · ${esc(dateLabel)}</h1><div class="date">${esc(label)}</div></div><div class="fit">${roomDayTableHtml(rows,dayIndex)}</div></section>`;
+        return `<section class="paper weekday"><div class="print-head"><h1>강의실별 주간 시간표 · ${esc(dateLabel)}</h1><div class="date">${esc(label)}</div></div><div class="fit">${roomDayTableHtml(rows,dayIndex)}${absenceTableHtml(rows,dayIndex,'room')}</div></section>`;
       }).join('');
     }
 
@@ -428,7 +472,7 @@
         context.beginPath(); context.moveTo(x,y); context.lineTo(x+rect.width*pixelRatio,y); context.stroke();
       });
       context.restore();
-      element.querySelectorAll('h1,h2,.date,th,td.time,.slot-source,.class-name,.teacher,.student').forEach(item=>drawText(context,item,pageRect,pixelRatio));
+      element.querySelectorAll('h1,h2,.date,th,td.time,.slot-source,.class-name,.teacher,.student,.absent-name,.absent-class,.absence-options,.no-absence').forEach(item=>drawText(context,item,pageRect,pixelRatio));
       const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.95));
       if(!blob) throw new Error('PDF용 이미지를 만들지 못했습니다.');
       return {data:new Uint8Array(await blob.arrayBuffer()),width:canvas.width,height:canvas.height};
