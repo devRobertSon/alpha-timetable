@@ -564,7 +564,15 @@
     document.querySelector('#pdfButton').addEventListener('click', openPdfInNewTab);
     document.querySelector('#printButton').addEventListener('click', printPdf);
     window.addEventListener('resize', scaleToPages);
-    showFilePrompt();
+    if(new URLSearchParams(location.search).has('absenceLayoutTest')) {
+      const sampleDays=()=>Array.from({length:7},()=>[]);
+      const sampleRows=['15:30','16:00','17:00'].map((time,index)=>({time,days:sampleDays()}));
+      sampleRows[0].days[1]=[{name:'1530 중등수학 집중반',teacher:'김선미',room:'1강의실',students:['권태양','김단우','박서준'],absentees:['권태양','김단우']}];
+      sampleRows[1].days[1]=[{name:'1600 고등영어 심화반',teacher:'박종진',room:'2강의실',students:['이유진','최유나'],absentees:['이유진','최유나']}];
+      sampleRows[2].days[1]=[{name:'1700 과학 내신대비반',teacher:'이재중',room:'3강의실',students:['정하민'],absentees:['정하민']}];
+      loadedRows=sampleRows; loadedLabel='[시간표(주간)]_2026-09-16.xls'; currentMode='daily';
+      document.querySelector('#viewControls').hidden=false; renderCurrent();
+    } else showFilePrompt();
   </script>
 </body>
 </html>
