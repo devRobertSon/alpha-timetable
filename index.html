@@ -53,10 +53,10 @@
     .absence-section { margin-top:3mm; }
     .absence-section h2 { margin:0 0 1mm; font-size:9pt; }
     .absence-table { font-size:7.2pt; line-height:1.15; }
-    .absence-table th,.absence-table td { padding:1mm 1.4mm; vertical-align:middle; }
-    .absence-table th:nth-child(1) { width:18%; }
-    .absence-table th:nth-child(2) { width:37%; }
-    .absence-table th:nth-child(3) { width:45%; }
+    .absence-table th,.absence-table td { padding:1mm .8mm; vertical-align:middle; text-align:center; }
+    .absence-table th:nth-child(1),.absence-table th:nth-child(4) { width:9%; }
+    .absence-table th:nth-child(2),.absence-table th:nth-child(5) { width:15%; }
+    .absence-table th:nth-child(3),.absence-table th:nth-child(6) { width:26%; }
     .absent-name { font-weight:800; }
     .absence-options { font-weight:700; white-space:nowrap; }
     .no-absence { padding:2mm 3mm; border:.25mm solid var(--line); background:#f7f8fa; color:var(--muted); font-size:7.2pt; }
@@ -321,8 +321,12 @@
           seen.add(key); absences.push({student,className:group.name});
         });
       }));
+      const pairs=[]; for(let index=0;index<absences.length;index+=2) pairs.push(absences.slice(index,index+2));
+      const cells=item=>item
+        ? `<td><span class="absent-name">${esc(item.student)}</span></td><td><span class="absent-class">${esc(item.className)}</span></td><td><span class="absence-options">□ 수강취소　□ 동영상　□ 주중보강</span></td>`
+        : '<td></td><td></td><td></td>';
       const content=absences.length
-        ? `<table class="absence-table" aria-label="결석자"><thead><tr><th>결석자</th><th>수업</th><th>처리 선택</th></tr></thead><tbody>${absences.map(item=>`<tr><td><span class="absent-name">${esc(item.student)}</span></td><td><span class="absent-class">${esc(item.className)}</span></td><td><span class="absence-options">□ 수강취소　 □ 동영상　 □ 주중보강</span></td></tr>`).join('')}</tbody></table>`
+        ? `<table class="absence-table" aria-label="결석자"><thead><tr><th>결석자</th><th>수업</th><th>처리 선택</th><th>결석자</th><th>수업</th><th>처리 선택</th></tr></thead><tbody>${pairs.map(pair=>`<tr>${cells(pair[0])}${cells(pair[1])}</tr>`).join('')}</tbody></table>`
         : `<div class="no-absence">결석자 없음</div>`;
       return `<section class="absence-section"><h2>결석자</h2>${content}</section>`;
     }
